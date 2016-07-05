@@ -9,7 +9,8 @@ export UNK=5
 
 echo "Step 1: Construct the title-article pairs from gigaword"
 mkdir -p $WORK
-find $AGIGA/???/*.xml.gz | parallel --gnu --progress -j $THREADS python2.7 $SCRIPTS/process_agiga.py \{\} $WORK
+#find $AGIGA/???/*.xml.gz | parallel --gnu --progress -j $THREADS python2.7 $SCRIPTS/process_agiga.py \{\} $WORK
+find $AGIGA/ | parallel --gnu --progress -j $THREADS python2.7 $SCRIPTS/process_dailymail.py \{\} $WORK
 
 
 echo "Step 2: Compile the data into train/dev/test."
