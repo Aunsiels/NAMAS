@@ -52,8 +52,8 @@ for l in open(sys.argv[1]):
         continue
 
     # Reasonable lengths
-    if not (10 < len(article_words) < 100 and
-            3 < len(title_words) < 50):
+    if not (10 < len(article_words) < 500 and
+            3 < len(title_words) < 100):
         continue
 
     # Some word match.
