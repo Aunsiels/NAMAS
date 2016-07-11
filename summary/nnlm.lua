@@ -83,6 +83,72 @@ function nnlm:build_mlp(encoder, encoder_size)
    collectgarbage()
 end
 
+function nnlm:build_rnn_mlp(encoder, encoder_size)
+   -- Set constants
+   local D = self.opt.embeddingDim
+   local N = self.opt.window
+   local H = self.opt.hiddenSize
+   local V = #self.dict.index_to_symbol
+   local P = encoder_size
+   print(H, P)
+
+   -- Input
+   local y_prev = nn.Identity()()
+   local h_prev = nn.Identity()()
+   local c = nn.Identity()()
+
+   local y_embedding = nn.LookupTable(V, D)(y_prev)
+
+   local y_lin = nn.Linear(D, D)(y_embedding)
+   local h_lin = nn.Linear(D, D)(h_prev)
+   local c_lin = nn.Linear(D, D)(c)
+
+   local h_sum = nn.CAddTable()({y_lin, h_lin, c_lin})
+
+   local h = nn.Sigmoid()(h_sum)
+
+   local h_lin2 = nn.Linear(D, V)(h_prev)
+   local c_lin2 = nn.Linear(D, V)(c)
+
+   local p_sum = nn.CAddTable()({h_lin2, c_lin2})
+
+   local p = nn.Tanh()(p_sum)
+
+   local soft_max = nn.LogSoftMax()(p)
+
+   -- Input is conditional context and ngram context.
+   self.mlp = nn.gModule({y_prev, h_prev, c},
+      {soft_max, h})
+
+   self.encoder = encoder
+
+   self.criterion = nn.ClassNLLCriterion()
+   self.lookup = lookup.data.module
+   self.mlp:cuda()
+   self.criterion:cuda()
+   collectgarbage()
+end
+
+function data:next_example()
+   local max_size = self.bucket_size
+   local diff = self.bucket_size - self.pos
+   if self.done_bucket or diff == 0 or diff == 1 then
+      self:load_next_bucket()
+   end
+   local offset
+   if self.pos + max_size > self.bucket_size then
+      offset = self.bucket_size - self.pos
+      self.done_bucket = true
+   else
+      offset = max_size
+   end
+   local positions = self.positions:narrow(1, 1, offset)
+
+   local aux_rows = self.article_data.words[self.bucket]
+   local target = self.title_data.target[self.bucket]
+   self.pos = self.pos + offset
+   return aux_rows, target
+end
 
 -- Run validation
 function nnlm:validation(valid_data)
@@ -108,6 +174,29 @@ function nnlm:validation(valid_data)
    return loss / total
 end
 
+-- Run validation RNN
+function nnlm:validation_rnn(valid_data)
+   print("[Running Validation RNN]")
+
+   local offset = 1000
+   local loss = 0
+   local total = 0
+
+   valid_data:reset()
+   while not valid_data:is_done() do
+      local input, target = valid_data:next_batch(offset)
+      local out = self.mlp:forward(input)
+      local err = self.criterion:forward(out, target) * target:size(1)
+
+      -- Augment counters.
+      loss = loss + err
+      total = total + target:size(1)
+   end
+   print(string.format("[perp: %f validation: %f total: %d]",
+                       math.exp(loss/total),
+                       loss/total, total))
+   return loss / total
+end
 
 function nnlm:renorm(data, th)
     local size = data:size(1)

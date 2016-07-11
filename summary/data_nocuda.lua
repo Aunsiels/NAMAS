@@ -57,7 +57,7 @@ function data:load_next_bucket()
    self.pos = 1
    self.aux_ptrs = self.title_data.sentences[self.bucket]:float():long()
    self.positions = torch.range(1, self.bucket):view(1, self.bucket)
-      :expand(1000, self.bucket):contiguous():cuda() + (200 * self.bucket)
+      :expand(1000, self.bucket):contiguous() + (200 * self.bucket)
 end
 
 function data:is_done()
@@ -113,9 +113,9 @@ end
 function data.make_input(article, context, K)
    local bucket = article:size(1)
    local aux_sentence = article:view(bucket, 1)
-      :expand(article:size(1), K):t():contiguous():cuda()
+      :expand(article:size(1), K):t():contiguous()
    local positions = torch.range(1, bucket):view(bucket, 1)
-      :expand(bucket, K):t():contiguous():cuda() + (200 * bucket)
+      :expand(bucket, K):t():contiguous() + (200 * bucket)
    return {aux_sentence, positions, context}
 end
 
@@ -133,15 +133,15 @@ function data.load_title(dname, shuffle, use_dict)
    for length, mat in pairs(ngram) do
       if shuffle ~= nil then
          local perm = torch.randperm(ngram[length]:size(1)):long()
-         ngram[length] = ngram[length]:index(1, perm):float():cuda()
+         ngram[length] = ngram[length]:index(1, perm):float()
          words[length] = words[length]:index(1, perm)
       else
-         ngram[length] = ngram[length]:float():cuda()
+         ngram[length] = ngram[length]:float()
       end
       assert(ngram[length]:size(1) == words[length]:size(1))
-      target_full[length] = words[length][{{}, 1}]:contiguous():float():cuda()
+      target_full[length] = words[length][{{}, 1}]:contiguous():float()
       sentences_full[length] =
-         words[length][{{}, 2}]:contiguous():float():cuda()
+         words[length][{{}, 2}]:contiguous():float()
       pos_full[length] = words[length][{{}, 3}]
 
    end
@@ -160,7 +160,7 @@ function data.load_article(dname, use_dict)
    local dict = use_dict or torch.load(dname .. 'dict')
    for length, mat in pairs(input_words) do
       input_words[length] = mat
-      input_words[length] = input_words[length]:float():cuda()
+      input_words[length] = input_words[length]:float()
    end
    local article_data = {words = input_words, dict = dict}
    return article_data

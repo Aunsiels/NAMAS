@@ -32,6 +32,8 @@ function encoder.build(opt, data)
       model = encoder.build_attnbow_model(opt, data)
    elseif opt.encoderModel == "conv" then
       model = encoder.build_conv_model(opt, data)
+   elseif opt.encoderModel == "conv_rec" then
+      model = encoder.build_conv_rec(opt, data)
    end
    torch.setdefaulttensortype("torch.DoubleTensor")
    return model
@@ -172,6 +174,50 @@ function encoder.build_attnbow_model(opt, data)
    encoder_mlp.lookup = article_lookup.data.module
    encoder_mlp.title_lookup = title_lookup.data.module
    return encoder_mlp
+end
+
+function encoder.build_conv_rec(opt, data)
+   print("Encoder model: Conv for recurrent")
+
+   local D = opt.embeddingDim
+   local N = opt.window
+   local H = opt.hiddenSize
+   local V = #data.article_data.dict.index_to_symbol
+
+   -- Takes the sentence, the positions of the words 
+   -- and the previous hidden state
+   local sentence = nn.Identity()()
+   local positions = nn.Identity()()
+   local hidden = nn.Identity()()
+
+   -- Word and local embeddings
+   local word_embedding = nn.LookupTable(V, D)(sentence)
+   local position_embedding = nn.LookupTable(1000, D)(positions)
+
+   -- Sum embedding of the words and the position
+   local sum = nn.CAddTable()({word_embedding, position_embedding})
+
+   -- Convolution over the text
+   local view = nn.View(1, -1, D)(sum)
+   local conv = cudnn.SpatialConvolution(1, D, D, N, 1, 1, (N - 1) / 2, 0)(view)
+   local post_conv = nn.View(D, -1)(conv)
+   local transp = nn.Transpose({1,2})(post_conv)
+
+   -- Weights
+   local view_hidden = nn.View(-1, 1)(hidden)
+   local mult = nn.MM()({transp, view_hidden})
+   local reduce = nn.View(-1)(mult)
+   local alpha = nn.SoftMax()(reduce)
+
+   -- Context vector
+   local c = nn.MixtureTable()({alpha, word_embedding})
+   local encoder_mlp = nn.gModule({sentence, positions, hidden}, {c})
+
+   encoder_mlp:cuda()
+   encoder_mlp.lookup = article_lookup.data.module
+   encoder_mlp.title_lookup = title_lookup.data.module
+
+   return encode_mlp
 end
 
 return encoder
