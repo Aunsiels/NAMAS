@@ -106,7 +106,8 @@ function data:next_example()
    local aux_rows = self.article_data.words[self.bucket]
    local target = self.title_data.words[self.bucket]
    self.pos = self.pos + offset
-   return aux_rows, target
+   local pos_words = torch.range(1, (#aux_rows)[1]):cuda()
+   return {aux_rows[1], pos_words} , target:transpose(1, 2)[1]
 end
 
 function data.make_input(article, context, K)
@@ -129,6 +130,7 @@ function data.load_title(dname, shuffle, use_dict)
    local target_full = {}
    local sentences_full = {}
    local pos_full = {}
+   local input_words = {}
    for length, mat in pairs(ngram) do
       if shuffle ~= nil then
          local perm = torch.randperm(ngram[length]:size(1)):long()

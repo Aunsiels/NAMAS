@@ -106,7 +106,8 @@ function data:next_example()
    local aux_rows = self.article_data.words[self.bucket]
    local target = self.title_data.words[self.bucket]
    self.pos = self.pos + offset
-   return aux_rows, target
+   local pos_words = torch.range(1, (#aux_rows)[1])
+   return {aux_rows[1], pos_words} , target:transpose(1, 2)[1]
 end
 
 function data.make_input(article, context, K)

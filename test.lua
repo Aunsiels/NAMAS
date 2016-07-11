@@ -35,6 +35,6 @@ translate(input[1], dict2)
 
 print("target")
 
-translate(target[1], dict)
+translate(target, dict)
 
 print(target)

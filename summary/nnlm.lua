@@ -13,7 +13,7 @@
 -- Ngram neural language model with auxiliary model
 require('nn')
 require('nngraph')
-require('fbnn')
+--require('fbnn')
 require('cunn')
 require('sys')
 local utils = require('summary.util')
@@ -157,13 +157,12 @@ end
 function nnlm:validation_rnn(valid_data)
    print("[Running Validation RNN]")
 
-   local offset = 1000
    local loss = 0
    local total = 0
 
    valid_data:reset()
    while not valid_data:is_done() do
-      local input, target = valid_data:next_batch(offset)
+      local input, target = valid_data:next_example()
       local out = self.mlp:forward(input)
       local err = self.criterion:forward(out, target) * target:size(1)
 
