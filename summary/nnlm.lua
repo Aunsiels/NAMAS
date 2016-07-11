@@ -129,27 +129,6 @@ function nnlm:build_rnn_mlp(encoder, encoder_size)
    collectgarbage()
 end
 
-function data:next_example()
-   local max_size = self.bucket_size
-   local diff = self.bucket_size - self.pos
-   if self.done_bucket or diff == 0 or diff == 1 then
-      self:load_next_bucket()
-   end
-   local offset
-   if self.pos + max_size > self.bucket_size then
-      offset = self.bucket_size - self.pos
-      self.done_bucket = true
-   else
-      offset = max_size
-   end
-   local positions = self.positions:narrow(1, 1, offset)
-
-   local aux_rows = self.article_data.words[self.bucket]
-   local target = self.title_data.target[self.bucket]
-   self.pos = self.pos + offset
-   return aux_rows, target
-end
-
 -- Run validation
 function nnlm:validation(valid_data)
    print("[Running Validation]")

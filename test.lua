@@ -1,5 +1,5 @@
 require("torch")
-data = require("summary.data")
+data = require("summary.data_nocuda")
 
 cmd = torch.CmdLine()                                                                                    
 cmd:text()                                                                                               
@@ -20,7 +20,7 @@ end
 
 data.add_opts(cmd)
 
-tdata = data.load_title(opt.titleDir, true)
+tdata = data.load_title(opt.titleDir, false)
 
 article_data = data.load_article(opt.articleDir)
 
@@ -35,4 +35,6 @@ translate(input[1], dict2)
 
 print("target")
 
-translate(target, dict)
+translate(target[1], dict)
+
+print(target)

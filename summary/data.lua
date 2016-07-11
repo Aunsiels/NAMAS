@@ -102,10 +102,9 @@ function data:next_example()
    else
       offset = max_size
    end
-   local positions = self.positions:narrow(1, 1, offset)
 
    local aux_rows = self.article_data.words[self.bucket]
-   local target = self.title_data.target[self.bucket]
+   local target = self.title_data.words[self.bucket]
    self.pos = self.pos + offset
    return aux_rows, target
 end
@@ -145,11 +144,16 @@ function data.load_title(dname, shuffle, use_dict)
       pos_full[length] = words[length][{{}, 3}]
 
    end
+   for length, mat in pairs(words) do
+      input_words[length] = mat
+      input_words[length] = input_words[length]:float():cuda()
+   end
    local title_data = {ngram = ngram,
                        target = target_full,
                        sentences = sentences_full,
                        pos = pos_full,
-                       dict = dict}
+                       dict = dict,
+                       words = input_words}
    return title_data
 end
 
