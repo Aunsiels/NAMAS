@@ -83,14 +83,11 @@ function nnlm:build_mlp(encoder, encoder_size)
    collectgarbage()
 end
 
-function nnlm:build_rnn_mlp(encoder, encoder_size)
+function nnlm:get_rnn_mlp()
    -- Set constants
    local D = self.opt.embeddingDim
    local N = self.opt.window
-   local H = self.opt.hiddenSize
    local V = #self.dict.index_to_symbol
-   local P = encoder_size
-   print(H, P)
 
    -- Input
    local y_prev = nn.Identity()()
@@ -107,8 +104,14 @@ function nnlm:build_rnn_mlp(encoder, encoder_size)
 
    local h = nn.Sigmoid()(h_sum)
 
-   local h_lin2 = nn.Linear(D, V)(h_prev)
-   local c_lin2 = nn.Linear(D, V)(c)
+   local mlp = nn.gModule({y_prev, h_prev, c},
+      {h})
+
+   local h_id = nn.Identity()()
+   local c_id = nn.Identity()()
+
+   local h_lin2 = nn.Linear(D, V)(h_id)
+   local c_lin2 = nn.Linear(D, V)(c_id)
 
    local p_sum = nn.CAddTable()({h_lin2, c_lin2})
 
@@ -116,14 +119,77 @@ function nnlm:build_rnn_mlp(encoder, encoder_size)
 
    local soft_max = nn.LogSoftMax()(p)
 
-   -- Input is conditional context and ngram context.
-   self.mlp = nn.gModule({y_prev, h_prev, c},
-      {soft_max, h})
+   local softmax = nn.gModule({h_id, c_id},{soft_max})
 
-   self.encoder = encoder
+   return mlp, softmax
+end
+
+function nnlm:clone_many_times(net, T)
+    local clones = {}
+
+    local params, gradParams
+    if net.parameters then
+        params, gradParams = net:parameters()
+        if params == nil then
+            params = {}
+        end
+    end
+
+    local paramsNoGrad
+    if net.parametersNoGrad then
+        paramsNoGrad = net:parametersNoGrad()
+    end
+
+    local mem = torch.MemoryFile("w"):binary()
+    mem:writeObject(net)
+
+    for t = 1, T do
+        -- We need to use a new reader for each clone.
+        -- We don't want to use the pointers to already read objects.
+        local reader = torch.MemoryFile(mem:storage(), "r"):binary()
+        local clone = reader:readObject()
+        reader:close()
+
+        if net.parameters then
+            local cloneParams, cloneGradParams = clone:parameters()
+            local cloneParamsNoGrad
+            for i = 1, #params do
+                cloneParams[i]:set(params[i])
+                cloneGradParams[i]:set(gradParams[i])
+            end
+            if paramsNoGrad then
+                cloneParamsNoGrad = clone:parametersNoGrad()
+                for i =1,#paramsNoGrad do
+                    cloneParamsNoGrad[i]:set(paramsNoGrad[i])
+                end
+            end
+        end
+
+        clones[t] = clone
+        collectgarbage()
+    end
+
+    mem:close()
+    return clones
+end
+
+function nnlm:build_rnn_mlp(encoder)
+   local H = self.opt.hiddenSize
+
+   self.encoders = self.clone_many_times(encoder, H)
+
+   local mlps = {}
+   local softmaxs = {}
+   local mlp
+   local softmax
+   mlp, softmax = self.get_rnn_mlp()
+   mlps = self.clone_many_times(mlp, H)
+   softmaxs = self.clone_many_times(softmax, H)
+
+   self.mlps = mlps
+   self.softmaxs = softmaxs
 
    self.criterion = nn.ClassNLLCriterion()
-   self.lookup = lookup.data.module
    self.mlp:cuda()
    self.criterion:cuda()
    collectgarbage()
@@ -159,12 +225,24 @@ function nnlm:validation_rnn(valid_data)
 
    local loss = 0
    local total = 0
+   local D = self.opt.embeddingDim
 
    valid_data:reset()
    while not valid_data:is_done() do
-      local input, target = valid_data:next_example()
-      local out = self.mlp:forward(input)
-      local err = self.criterion:forward(out, target) * target:size(1)
+      local input, position, target = valid_data:next_example()
+
+      local hidden = torch.Tensor(D):zero()
+      local y_prev = torch.Tensor{1}
+      local err    = 0
+
+      for i=1,target:size()[1] do
+          local c = self.encoders[i]:forward({input, position, hidden})
+          local h = self.mlps[i]:forward({y_prev, hidden, c})
+          local soft = self.softmaxs:forward({h, c})
+          y_prev = target[i]
+          hidden = h
+          err = err + self.criterion:forward(soft, target[i])
+      end
 
       -- Augment counters.
       loss = loss + err
@@ -223,6 +301,20 @@ function nnlm:run_valid(valid_data)
    self:save(self.opt.modelFilename)
 end
 
+function nnlm:run_valid_rnn(valid_data)
+   -- Run validation.
+   if valid_data ~= nil then
+      local cur_valid_loss = self:validation_rnn(valid_data)
+      -- If valid loss does not improve drop learning rate.
+      if cur_valid_loss > self.last_valid_loss then
+         self.opt.learningRate = self.opt.learningRate / 2
+      end
+      self.last_valid_loss = cur_valid_loss
+   end
+
+   -- Save the model.
+   self:save(self.opt.modelFilename)
+end
 
 function nnlm:train(data, valid_data)
    -- Best loss seen yet.
@@ -284,6 +376,111 @@ function nnlm:train(data, valid_data)
    end
 end
 
+function nnlm:train_rnn(data, valid_data)
+   -- Best loss seen yet.
+   self.last_valid_loss = 1e9
+   -- Train
+   for epoch = 1, self.opt.epochs do
+      data:reset()
+      self:renorm_tables()
+      self:run_valid_rnn(valid_data)
+
+      -- Loss for the epoch.
+      local epoch_loss = 0
+      local batch = 1
+      local last_batch = 1
+      local total = 0
+      local loss = 0
+
+      local batch_size = self.opt.miniBatchSize
+
+      local count = 1
+
+      sys.tic()
+      while not data:is_done() do
+         local input, position, target = data:next_example()
+         if data:is_done() then break end
+
+         local hidden0 = torch.Tensor(D):zero()
+         local h = {}
+         h[1] = hidden0
+         local y = {}
+         local y_prev = torch.Tensor{1}
+         y[1] = y_prev
+         local err = 0
+
+         local c = {}
+
+         local doutput_t = {}
+
+         for i=1,target:size()[1] do
+             c[i] = self.encoders[i]:forward({input, position, h[i]})
+             h[i+1] = self.mlps[i]:forward({y[i], h[i], c[i]})
+             local soft = self.softmaxs[i]:forward({h[i+1], c[i]})
+             y[i+1] = target[i]
+             err = err + self.criterion:forward(soft, target[i])
+             doutput[i] = self.criterion:backward(soft, target[i])
+         end
+
+         local drnn_c = {}
+         local drnn_h = {}
+         local drnn_y = {}
+
+         if not utils.isnan(err) then
+            loss = loss + err
+            epoch_loss = epoch_loss + err
+
+            for i=target:size()[1],1,-1 do
+                if (i == target:size()[1]) then
+                    self.softmaxs[i]:zeroGradParameters()
+                    drnn_h[i], drnn_c[i] = self.softmaxs[i]:backward({h[i+1], c[i]}, doutput[i])
+                else
+                    local drnn_htemp
+                    self.softmaxs[i]:zeroGradParameters()
+                    drnn_htemp, drnn_c[i] = unpack(self.softmaxs[i]:backward({h[i+1], c[i]}, doutput[i]))
+                    drnn_h[i]:add(drnn_htemp)
+                end
+                local drnn_ctemp
+                drnn_y[i-1], drnn_h[i-1], drnn_ctemp = unpack(self.mlps[i]:backward({y[i], h[i], c[i]},
+                                                                             drnn_h[i]))
+                drnn_c[i]:add(drnn_ctemp)
+                local drnn_htemp
+                local din
+                local dl
+                din, dl, drnn_htemp = unpack(self.encoders[i]:backward({input, position, h[i]},
+                                                                       drnn_c[i]))
+                drnn_h[i-1]:add(drnn_htemp)
+            end
+            if count%batch_size == 0 then
+                self.mlp:updateParameters(self.opt.learningRate)
+            end
+         else
+            print("NaN")
+            print(input)
+         end
+
+         -- Logging
+         if batch % self.opt.printEvery == 1 then
+            print(string.format(
+                     "[Loss: %f Epoch: %d Position: %d Rate: %f Time: %f]",
+                     loss / ((batch - last_batch) * self.opt.miniBatchSize),
+                     epoch,
+                     batch * self.opt.miniBatchSize,
+                     self.opt.learningRate,
+                     sys.toc()
+            ))
+            sys.tic()
+            last_batch = batch
+            loss = 0
+         end
+
+         batch = batch + 1
+         total = total + input[1]:size(1)
+      end
+      print(string.format("[EPOCH : %d LOSS: %f TOTAL: %d BATCHES: %d]",
+                          epoch, epoch_loss / total, total, batch))
+   end
+end
 
 function nnlm:save(fname)
     print("[saving mlp: " .. fname .. "]")

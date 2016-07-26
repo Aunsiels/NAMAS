@@ -181,7 +181,6 @@ function encoder.build_conv_rec(opt, data)
 
    local D = opt.embeddingDim
    local N = opt.window
-   local H = opt.hiddenSize
    local V = #data.article_data.dict.index_to_symbol
 
    -- Takes the sentence, the positions of the words 
@@ -199,7 +198,7 @@ function encoder.build_conv_rec(opt, data)
 
    -- Convolution over the text
    local view = nn.View(1, -1, D)(sum)
-   local conv = cudnn.SpatialConvolution(1, D, D, N, 1, 1, (N - 1) / 2, 0)(view)
+   local conv = cudnn.SpatialConvolution(1, 1, 1, N, 1, 1, 0, (N - 1) / 2)(view)
    local post_conv = nn.View(D, -1)(conv)
    local transp = nn.Transpose({1,2})(post_conv)
 
@@ -214,10 +213,8 @@ function encoder.build_conv_rec(opt, data)
    local encoder_mlp = nn.gModule({sentence, positions, hidden}, {c})
 
    encoder_mlp:cuda()
-   encoder_mlp.lookup = article_lookup.data.module
-   encoder_mlp.title_lookup = title_lookup.data.module
 
-   return encode_mlp
+   return encoder_mlp
 end
 
 return encoder
