@@ -130,7 +130,6 @@ function data.load_title(dname, shuffle, use_dict)
    local target_full = {}
    local sentences_full = {}
    local pos_full = {}
-   local input_words = {}
    for length, mat in pairs(ngram) do
       if shuffle ~= nil then
          local perm = torch.randperm(ngram[length]:size(1)):long()
@@ -146,16 +145,11 @@ function data.load_title(dname, shuffle, use_dict)
       pos_full[length] = words[length][{{}, 3}]
 
    end
-   for length, mat in pairs(words) do
-      input_words[length] = mat
-      input_words[length] = input_words[length]:float():cuda()
-   end
    local title_data = {ngram = ngram,
                        target = target_full,
                        sentences = sentences_full,
                        pos = pos_full,
-                       dict = dict,
-                       words = input_words}
+                       dict = dict}
    return title_data
 end
 

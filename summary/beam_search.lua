@@ -10,6 +10,9 @@
 --          Sumit Chopra <spchopra@fb.com>
 --          Jason Weston <jase@fb.com>
 
+require('cunn')
+require ('cutorch')
+
 -- A beam search decoder
 local data     = require('summary.data')
 local features = require('summary.features')
@@ -100,7 +103,8 @@ function beam:generate(article, len)
 
    -- Find k-max columns of a matrix.
    -- Use 2*k in case some are invalid.
-   local pool = nn.TemporalKMaxPooling(2*K)
+   -- local pool = nn.TemporalKMaxPooling(2*K)
+   local pool = nn.TemporalMaxPooling(2*K)
 
    -- Main loop of beam search.
    for i = 1, n do
@@ -147,7 +151,8 @@ function beam:generate(article, len)
 
       -- (2) Retain the K-best words for each hypothesis using GPU.
       -- This leaves a KxK matrix which we flatten to a K^2 vector.
-      local max_scores, mat_indices = find_k_max(pool, out:cuda())
+      --local max_scores, mat_indices = find_k_max(pool, out:cuda())
+      local max_scores, mat_indices = find_k_max(pool, out)
       local flat = max_scores:view(max_scores:size(1)
                                       * max_scores:size(2)):float()
 

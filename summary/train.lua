@@ -45,6 +45,7 @@ local function main()
    local encoder_mlp = encoder.build(opt, train_data)
    local mlp = nnlm.create_lm(opt, tdata.dict, encoder_mlp,
                               opt.bowDim, article_data.dict)
+   mlp:load(opt.modelFilename)
 
    mlp:train(train_data, valid)
 end
