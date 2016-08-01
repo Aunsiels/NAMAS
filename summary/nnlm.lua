@@ -432,11 +432,9 @@ function nnlm:train_rnn(data, valid_data)
 
             for i=target:size()[1],1,-1 do
                 if (i == target:size()[1]) then
-                    self.softmaxs[i]:zeroGradParameters()
                     drnn_h[i], drnn_c[i] = self.softmaxs[i]:backward({h[i+1], c[i]}, doutput[i])
                 else
                     local drnn_htemp
-                    self.softmaxs[i]:zeroGradParameters()
                     drnn_htemp, drnn_c[i] = unpack(self.softmaxs[i]:backward({h[i+1], c[i]}, doutput[i]))
                     drnn_h[i]:add(drnn_htemp)
                 end
@@ -452,7 +450,12 @@ function nnlm:train_rnn(data, valid_data)
                 drnn_h[i-1]:add(drnn_htemp)
             end
             if count%batch_size == 0 then
-                self.mlp:updateParameters(self.opt.learningRate)
+                self.mlps[1]:updateParameters(self.opt.learningRate)
+                self.encoders[1]:updateParameters(self.opt.learningRate)
+                self.softmaxs[1]:updateParameters(self.opt.learningRate)
+                self.softmaxs[1]:zeroGradParameters()
+                self.mlps[1]:zeroGradParameters()
+                self.encoders[1]:zeroGradParameters()
             end
          else
             print("NaN")

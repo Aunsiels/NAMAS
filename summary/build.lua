@@ -104,6 +104,31 @@ local function build_article_matrices(dict, file, nsents, line_lengths)
    return mat, pos
 end
 
+local function build_article_matrices2(dict, file, nsents, line_lengths)
+   -- For each length bucket, construct a #sentence x length matrix
+   -- of word forms.
+   local f = io.open(file, 'r')
+
+   -- One matrix for each length.
+   local mat = {}
+   local counter = 1
+
+   for l in f:lines() do
+      local true_l = "<s> <s> <s> " .. l .. " </s> </s> </s>"
+      local line = utils.string_split(true_l, " ")
+      local tensor = torch.Tensor(#line)
+      for j = 1, #line do
+         local index = dict.symbol_to_index[line[j]] or 1
+         tensor[j] = index
+      end
+      mat[counter] = tensor
+      counter = counter + 1
+      if counter % 100000 == 0 then
+          print(counter)
+      end
+   end
+   return mat
+end
 
 local function build_title_matrices(dict, file, aligned_lengths,
                                     bucket_sizes, window)
@@ -173,6 +198,29 @@ local function build_title_matrices(dict, file, aligned_lengths,
    return mat, pos, ngram
 end
 
+local function build_title_matrices2(dict, file, aligned_lengths,
+                                    bucket_sizes, window)
+   local mat = {}
+
+   -- Columns are the preceding window.
+   local counter = 1
+   local f = io.open(file, 'r')
+   for l in f:lines() do
+      -- Add implicit </s>.
+      local true_l = l .. " </s>"
+      local line = utils.string_split(true_l, " ")
+      local tensor = torch.Tensor(#line)
+      for j = 1, #line do
+         local index = dict.symbol_to_index[line[j]] or 1
+
+         tensor[j] = torch.Tensor{index}
+      end
+      mat[counter] = tensor
+      counter = counter + 1
+   end
+   return mat
+end
+
 local function main()
    local counter = count(opt.inArticleFile, nil, true)
    local dict = torch.load(opt.inArticleDictionary)
@@ -199,4 +247,32 @@ local function main()
    torch.save(opt.outTitleDirectory .. '/ngram.mat.torch', ngram_mat)
 end
 
-main()
+local function main2()
+   local dict = torch.load(opt.inArticleDictionary)
+
+   -- Construct a rectangular word matrix.
+   local word_mat =
+      build_article_matrices2(dict, opt.inArticleFile)
+
+   print("Saving...")
+   dict = nil
+   collectgarbage()
+   print("Garbage")
+   torch.save(opt.outArticleDirectory .. '/word_rnn.mat.torch', word_mat)
+
+   print("TITLE")
+
+   local title_dict = torch.load(opt.inTitleDictionary)
+
+   -- Construct a 1d word matrix.
+   local word_mat =
+      build_title_matrices2(title_dict,
+                           opt.inTitleFile,
+                           opt.window)
+   torch.save(opt.outTitleDirectory .. '/word_rnn.mat.torch', word_mat)
+end
+
+
+--main()
+-- main2 for rnn (simple article/title pairs)
+main2()
