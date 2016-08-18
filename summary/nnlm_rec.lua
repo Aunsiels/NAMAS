@@ -4,6 +4,7 @@ require('nngraph')
 require('cunn')
 require('sys')
 require('rnn')
+require('summary.MixtureTablePerso') 
 
 local nnlm_rec = {}
 
@@ -75,7 +76,7 @@ function nnlm_rec.get_merge(D, N, V)
     local reduce = nn.View(-1)(mult)
     local alpha = nn.SoftMax()(reduce)
     -- Context vector
-    local c = nn.MixtureTable()({alpha, word_embedding})
+    local c = nn.MixtureTablePerso()({alpha, word_embedding})
     local y_embedding = nn.LookupTable(V, D)(y_prev)
     local y_lin = nn.Linear(D, D)(y_embedding)
     local h_lin = nn.Linear(D, D)(hidden)
