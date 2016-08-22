@@ -79,8 +79,18 @@ function data_rnn.load_title(dname, number, use_dict)
    -- local offsets = torch.load(dname .. 'offset.mat.torch')
 
    local dict = use_dict or torch.load(dname .. 'dict')
+   local l0 = nil
+   local t_length = #input_words
+   print(t_length)
    for length, mat in pairs(input_words) do
-      input_words[length] = mat:float()
+      if l0 == nil then l0 = length end
+      if type(mat) == "number" then print(length) end
+      if length < t_length then
+          input_words[length - l0 + 1] = mat:float()
+      end
+      if length - l0 + 1 ~= length then
+          input_words[length] = nil
+      end
    end
    local title_data = {words = input_words, dict = dict}
    return title_data
@@ -91,8 +101,17 @@ function data_rnn.load_article(dname, number, use_dict)
    -- local offsets = torch.load(dname .. 'offset.mat.torch')
 
    local dict = use_dict or torch.load(dname .. 'dict')
+   local l0 = nil
+   local t_length = #input_words
    for length, mat in pairs(input_words) do
-      input_words[length] = mat:float()
+      if l0 == nil then l0 = length end
+      if type(mat) == "number" then print(length) end
+      if length < t_length then
+          input_words[length - l0 + 1] = mat:float()
+      end
+      if length - l0 + 1 ~= length then
+          input_words[length] = nil
+      end
    end
    local article_data = {words = input_words, dict = dict}
    return article_data
