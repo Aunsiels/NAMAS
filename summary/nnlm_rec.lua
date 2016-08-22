@@ -229,9 +229,8 @@ function nnlm_rec:train(data, data1, valid_data)
    self.last_valid_loss = 1e9
    -- Train
    for epoch = 1, self.opt.epochs do
+      --self:run_valid(valid_data)
       data:reset()
-      data1:reset()
-      self:run_valid(valid_data)
 
       -- Loss for the epoch.
       local epoch_loss = 0
@@ -246,7 +245,7 @@ function nnlm_rec:train(data, data1, valid_data)
 
       sys.tic()
       while not data:is_done() do
-         local sentence, position, target = data:next_batch()
+         local sentence, position, target = data:next_batch(1000)
 
          if batch == 1 then
              self.mlp:zeroGradParameters()
@@ -278,9 +277,10 @@ function nnlm_rec:train(data, data1, valid_data)
          total = total + target:size(1)
       end
 
+      data1:reset()
 
       while not data1:is_done() do
-         local sentence, position, target = data1:next_batch()
+         local sentence, position, target = data1:next_batch(1000)
 
          local err = self.train_rnn(sentence, position, target, self.mlp, self.criterion, self.opt.learningRate)
          epoch_loss = epoch_loss + err

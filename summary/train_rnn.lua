@@ -17,8 +17,8 @@ opt = cmd:parse(arg)
 
 local function main()
    -- Load in the data.
-   local tdata = data.load_title(opt.titleDir, "1")
-   local article_data = data.load_article(opt.articleDir, "1")
+   local tdata = data.load_title(opt.titleDir, "2")
+   local article_data = data.load_article(opt.articleDir, "2")
    --local tdata1 = data.load_title(opt.titleDir, "2")
    --local article_data1 = data.load_article(opt.articleDir, "2")
 

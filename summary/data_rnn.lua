@@ -20,33 +20,44 @@ function data_rnn.init(title_data, article_data)
    setmetatable(new_data, { __index = data_rnn })
    new_data.title_data = title_data
    new_data.article_data = article_data
-   new_data.total_size = #title_data.words
+   new_data.total_size = #article_data.words
    new_data:reset()
+   print(article_data.words[1])
+   print(title_data.words[1])
    return new_data
 end
 
 function data_rnn:reset()
-    self.current_index = 0
+    self.current_index = 1
 end
 
 function data_rnn:is_done()
-   return self.total_size == self.current_index
+   return self.total_size <= self.current_index
 end
 
 function data_rnn:next_batch(max_size)
    local diff = self.total_size - self.current_index
    local offset
-   if self.current_index + max_size > self.total_size then
+   if self.current_index + (max_size or 0) > self.total_size then
       offset = self.total_size - self.current_index
    else
-      offset = max_size
+      offset = self.current_index + (max_size or 0)
    end
+
+   if offset <= 0 then offset = 1 end
 
    self.current_index = self.current_index + 1
    local sentence = self.article_data.words[offset]
    local target = self.title_data.words[offset]
+   if sentence == nil then
+       print("Sentence is nil and offset is " .. offset)
+       print("Size of the data " .. #self.article_data.words)
+   else
+       sentence = self.article_data.words[1]
+       target = self.title_data.words[1]
+   end
    local position = torch.range(1, sentence:size(1)):cuda()
-
+   
    return sentence, position, target
 end
 
